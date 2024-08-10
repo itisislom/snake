@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Snake Game</title>
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            height: 100vh;
+            margin: 0;
+            background-color: #333;
+            font-family: Arial, sans-serif;
+            user-select: none; /* Убираем выделение текста */
+        }
+
+        canvas {
+            background-color: #000;
+            border: 1px solid #fff;
+        }
+
+        .controls {
+            margin-top: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            position: absolute;
+            bottom: 20px;
+        }
+
+        .control-row {
+            display: flex;
+        }
+
+        .control-btn {
+            background-color: #555;
+            border: 2px solid #fff;
+            color: white;
+            font-size: 24px;
+            width: 60px;
+            height: 60px;
+            margin: 5px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            border-radius: 50%;
+            user-select: none;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            touch-action: manipulation; /* Улучшение реакции на касания */
+        }
+
+        .control-btn:hover {
+            background-color: #777;
+        }
+
+        #gameOverDialog {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: #222;
+            color: #fff;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            z-index: 100;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+            opacity: 0;
+            animation: fadeIn 0.5s forwards;
+        }
+
+        #gameOverDialog h2 {
+            margin-top: 0;
+        }
+
+        #restartBtn {
+            margin-top: 20px;
+            padding: 10px 20px;
+            background-color: #555;
+            border: none;
+            color: #fff;
+            cursor: pointer;
+            border-radius: 5px;
+            transition: background-color 0.3s;
+        }
+
+        #restartBtn:hover {
+            background-color: #777;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translate(-50%, -55%); }
+            to { opacity: 1; transform: translate(-50%, -50%); }
+        }
+
+        @keyframes fadeOut {
+            from { opacity: 1; transform: translate(-50%, -50%); }
+            to { opacity: 0; transform: translate(-50%, -55%); }
+        }
+
+        .footer {
+            position: absolute;
+            bottom: 10px;
+            color: #ccc;
+            font-size: 14px;
+        }
+
+        .start-text {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: #222;
+            color: #fff;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            z-index: 100;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+            opacity: 1;
+            animation: fadeIn 0.5s forwards;
+        }
+
+        @media (min-width: 768px) {
+            .controls {
+                display: none;
+            }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas" width="400" height="400"></canvas>
+
+    <div id="gameOverDialog">
+        <h2>Упс!</h2>
+        <p>Вы проиграли, ваш счёт <span id="finalScore"></span></p>
+        <button id="restartBtn">Начать заново</button>
+    </div>
+
+    <div class="controls">
+        <div class="control-row">
+            <div id="up" class="control-btn">⬆️</div>
+        </div>
+        <div class="control-row">
+            <div id="left" class="control-btn">⬅️</div>
+            <div id="down" class="control-btn">⬇️</div>
+            <div id="right" class="control-btn">➡️</div>
+        </div>
+    </div>
+
+    <div class="footer">Created by Islom Sadriddinov (C)</div>
+
+    <div id="startText" class="start-text">Нажми на стрелочки что-бы начать!</div>
+
+    <audio id="backgroundMusic">
+        <source src="background-music.mp3" type="audio/mp3">
+        Ваш браузер не поддерживает элемент audio.
+    </audio>
+
+    <audio id="gameOverSound">
+        <source src="game-over.mp3" type="audio/mp3">
+        Ваш браузер не поддерживает элемент audio.
+    </audio>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const gridSize = 20;
+        const speedIncrement = 0.5;
+        let snake = [{ x: 200, y: 200 }];
+        let direction = { x: 0, y: 0 };
+        let food = { x: Math.floor(Math.random() * canvas.width / gridSize) * gridSize, y: Math.floor(Math.random() * canvas.height / gridSize) * gridSize };
+        let score = 0;
+        let speed = 200; // Уменьшенная скорость
+        let nextMoveTime = Date.now();
+        let gameStarted = false;
+
+        const backgroundMusic = document.getElementById('backgroundMusic');
+        const gameOverSound = document.getElementById('gameOverSound');
+        const gameOverDialog = document.getElementById('gameOverDialog');
+        const finalScoreText = document.getElementById('finalScore');
+        const restartBtn = document.getElementById('restartBtn');
+        const startText = document.getElementById('startText');
+
+        function fadeInAudio(audio, duration) {
+            audio.volume = 0;
+            audio.play();
+            let step = 0.1 / (duration / 100);
+            let interval = setInterval(() => {
+                if (audio.volume < 1) {
+                    audio.volume += step;
+                } else {
+                    clearInterval(interval);
+                }
+            }, 100);
+        }
+
+        function fadeOutElement(element, duration) {
+            element.style.animation = `fadeOut ${duration / 1000}s forwards`;
+            setTimeout(() => { element.style.display = 'none'; }, duration);
+        }
+
+        function drawSnake() {
+            ctx.fillStyle = 'lime';
+            snake.forEach(segment => ctx.fillRect(segment.x, segment.y, gridSize, gridSize));
+        }
+
+        function moveSnake() {
+            const newHead = { x: snake[0].x + direction.x * gridSize, y: snake[0].y + direction.y * gridSize };
+            snake.unshift(newHead);
+            if (newHead.x === food.x && newHead.y === food.y) {
+                score++;
+                speed = Math.max(80, speed - speedIncrement); // Увеличение скорости игры
+                placeFood();
+            } else {
+                snake.pop();
+            }
+        }
+
+        function placeFood() {
+            food = { x: Math.floor(Math.random() * canvas.width / gridSize) * gridSize, y: Math.floor(Math.random() * canvas.height / gridSize) * gridSize };
+        }
+
+        function drawFood() {
+            ctx.fillStyle = 'red';
+            ctx.fillRect(food.x, food.y, gridSize, gridSize);
+        }
+
+        function checkCollision() {
+            const head = snake[0];
+            if (head.x < 0 || head.x >= canvas.width || head.y < 0 || head.y >= canvas.height || snake.slice(1).some(segment => segment.x === head.x && segment.y === head.y)) {
+                gameOver();
+            }
+        }
+
+        function gameOver() {
+            backgroundMusic.pause(); // Остановка фоновой музыки
+            backgroundMusic.currentTime = 0; // Сброс времени фоновой музыки
+            gameOverSound.play();
+
+            finalScoreText.textContent = score;
+
+            // Показ pop-up диалога
+            gameOverDialog.style.display = 'block';
+            gameOverDialog.classList.remove('fadeOut');
+            gameOverDialog.classList.add('fadeIn');
+
+            // Остановка игры
+            direction = { x: 0, y: 0 };
+        }
+
+        function restartGame() {
+            snake = [{ x: 200, y: 200 }];
+            direction = { x: 0, y: 0 };
+            score = 0;
+            speed = 200;
+            placeFood();
+
+            gameOverDialog.classList.remove('fadeIn');
+            gameOverDialog.classList.add('fadeOut');
+            setTimeout(() => {
+                gameOverDialog.style.display = 'none';
+                fadeInAudio(backgroundMusic, 2000); // Плавное увеличение громкости при перезапуске
+                gameStarted = true;
+                requestAnimationFrame(gameLoop);
+            }, 500);
+        }
+
+        function gameLoop() {
+            if (!gameStarted) {
+                return;
+            }
+
+            if (Date.now() - nextMoveTime > speed) {
+                moveSnake();
+                checkCollision();
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                drawFood();
+                drawSnake();
+                nextMoveTime = Date.now();
+            }
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        function handleKeyPress(event) {
+            switch (event.code) {
+                case 'ArrowUp':
+                case 'KeyW':
+                    setDirection({ x: 0, y: -1 });
+                    break;
+                case 'ArrowDown':
+                case 'KeyS':
+                    setDirection({ x: 0, y: 1 });
+                    break;
+                case 'ArrowLeft':
+                case 'KeyA':
+                    setDirection({ x: -1, y: 0 });
+                    break;
+                case 'ArrowRight':
+                case 'KeyD':
+                    setDirection({ x: 1, y: 0 });
+                    break;
+            }
+        }
+
+        function setDirection(newDirection) {
+            if (direction.x + newDirection.x === 0 && direction.y + newDirection.y === 0) {
+                return;
+            }
+            direction = newDirection;
+        }
+
+        document.addEventListener('keydown', handleKeyPress);
+
+        document.getElementById('up').addEventListener('click', () => { setDirection({ x: 0, y: -1 }); });
+        document.getElementById('down').addEventListener('click', () => { setDirection({ x: 0, y: 1 }); });
+        document.getElementById('left').addEventListener('click', () => { setDirection({ x: -1, y: 0 }); });
+        document.getElementById('right').addEventListener('click', () => { setDirection({ x: 1, y: 0 }); });
+
+        restartBtn.addEventListener('click', restartGame);
+
+        window.onload = () => {
+            fadeInAudio(backgroundMusic, 2000); // Плавное увеличение громкости при загрузке
+            startText.style.opacity = 1; // Показ текста при загрузке
+            setTimeout(() => {
+                gameStarted = true;
+                fadeOutElement(startText, 2000); // Плавное исчезновение текста
+                requestAnimationFrame(gameLoop);
+            }, 2000); // Задержка перед запуском игры
+        };
+    </script>
+</body>
+</html>
